@@ -1,0 +1,259 @@
+---
+title: "Homework 2"
+author: "Your Name (YOURUNI)"
+date: "2025-10-01"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r load_libraries}
+library(tidyverse)
+library(readxl)
+```
+
+## Problem 1
+
+This problem uses the FiveThirtyEight data on political composition and economic indicators. We'll clean and merge three datasets: `pols-month.csv`, `snp.csv`, and `unemployment.csv`.
+
+### Clean pols-month data
+
+```{r clean_pols}
+pols_df = read_csv("pols-month.csv") %>%
+  separate(mon, into = c("year", "month", "day"), sep = "-") %>%
+  mutate(
+    year = as.integer(year),
+    month = as.integer(month),
+    day = as.integer(day),
+    month = month.name[month],
+    president = ifelse(prez_gop == 1, "gop", "dem")
+  ) %>%
+  select(-prez_gop, -prez_dem, -day)
+```
+
+### Clean snp data
+
+```{r clean_snp}
+snp_df = read_csv("snp.csv") %>%
+  mutate(
+    date = as.Date(date, format = "%m/%d/%y"),
+    year = as.integer(format(date, "%Y")),
+    year = ifelse(year > 2025, year - 100, year),
+    month = month.name[as.integer(format(date, "%m"))]
+  ) %>%
+  select(year, month, close) %>%
+  arrange(year, month)
+```
+
+### Clean unemployment data
+
+```{r clean_unemployment}
+unemployment_df = read_csv("unemployment.csv") %>%
+  pivot_longer(
+    Jan:Dec,
+    names_to = "month",
+    values_to = "unemployment"
+  ) %>%
+  mutate(
+    month = recode(month,
+      "Jan" = "January", "Feb" = "February", "Mar" = "March",
+      "Apr" = "April", "May" = "May", "Jun" = "June",
+      "Jul" = "July", "Aug" = "August", "Sep" = "September",
+      "Oct" = "October", "Nov" = "November", "Dec" = "December"
+    )
+  ) %>%
+  rename(year = Year)
+```
+
+### Merge datasets
+
+```{r merge_fivethirtyeight}
+merged_df = pols_df %>%
+  left_join(snp_df, by = c("year", "month")) %>%
+  left_join(unemployment_df, by = c("year", "month"))
+```
+
+### Description of datasets
+
+The `pols-month` dataset contains `r nrow(pols_df)` observations of political party affiliations in US government from `r min(pols_df$year)` to `r max(pols_df$year)`. Key variables include the number of Republican and Democratic governors, senators, and representatives, as well as the party of the president.
+
+The `snp` dataset contains `r nrow(snp_df)` observations of the S&P 500 closing values from `r min(snp_df$year)` to `r max(snp_df$year)`. The key variable is `close`, representing the closing value of the S&P 500 index.
+
+The `unemployment` dataset contains `r nrow(unemployment_df)` observations of monthly unemployment rates from `r min(unemployment_df$year)` to `r max(unemployment_df$year)`.
+
+The resulting merged dataset has `r nrow(merged_df)` observations and `r ncol(merged_df)` variables, spanning years `r min(merged_df$year)` to `r max(merged_df$year)`. Key variables include `year`, `month`, `president` (party affiliation), `close` (S&P 500 closing value), `unemployment` (unemployment rate), and counts of political party representatives across government branches.
+
+## Problem 2
+
+This problem uses the Mr. Trash Wheel dataset tracking trash collection from Baltimore's Inner Harbor.
+
+### Read and clean Mr. Trash Wheel data
+
+```{r clean_mr_trash}
+mr_trash_df = read_excel(
+  "202509 Trash Wheel Collection Data.xlsx",
+  sheet = "Mr. Trash Wheel",
+  range = "A2:N708"
+) %>%
+  janitor::clean_names() %>%
+  filter(!is.na(dumpster)) %>%
+  mutate(
+    sports_balls = as.integer(round(sports_balls)),
+    trash_wheel = "Mr. Trash Wheel",
+    year = as.numeric(year)
+  )
+```
+
+### Read and clean Professor Trash Wheel data
+
+```{r clean_prof_trash}
+prof_trash_df = read_excel(
+  "202509 Trash Wheel Collection Data.xlsx",
+  sheet = "Professor Trash Wheel",
+  range = "A2:M133"
+) %>%
+  janitor::clean_names() %>%
+  filter(!is.na(dumpster)) %>%
+  mutate(
+    trash_wheel = "Professor Trash Wheel"
+  )
+```
+
+### Read and clean Gwynnda data
+
+```{r clean_gwynnda}
+gwynnda_df = read_excel(
+  "202509 Trash Wheel Collection Data.xlsx",
+  sheet = "Gwynns Falls Trash Wheel",
+  range = "A2:L350"
+) %>%
+  janitor::clean_names() %>%
+  filter(!is.na(dumpster)) %>%
+  mutate(
+    trash_wheel = "Gwynnda"
+  )
+```
+
+### Combine all Trash Wheel datasets
+
+```{r combine_trash}
+trash_wheel_df = bind_rows(mr_trash_df, prof_trash_df, gwynnda_df) %>%
+  relocate(trash_wheel)
+```
+
+### Summary of Trash Wheel data
+
+The combined Trash Wheel dataset contains `r nrow(trash_wheel_df)` observations from three trash wheels operating in Baltimore's waterways. The dataset includes `r ncol(trash_wheel_df)` variables tracking various types of trash collected, including plastic bottles, polystyrene, cigarette butts, glass bottles, plastic bags, wrappers, and sports balls. Each observation represents a dumpster collection event.
+
+Key findings:
+
+- The total weight of trash collected by Professor Trash Wheel was `r trash_wheel_df %>% filter(trash_wheel == "Professor Trash Wheel") %>% pull(weight_tons) %>% sum(na.rm = TRUE)` tons.
+
+- The total number of cigarette butts collected by Gwynnda in June 2022 was `r trash_wheel_df %>% filter(trash_wheel == "Gwynnda", month == "June", year == 2022) %>% pull(cigarette_butts) %>% sum(na.rm = TRUE)`.
+
+## Problem 3
+
+This problem analyzes rental price trends in New York City using Zillow data.
+
+### Read and clean ZIP code data
+
+```{r clean_zip_codes}
+zip_codes_df = read_csv("Zip Codes.csv") %>%
+  janitor::clean_names() %>%
+  select(zip_code, county, neighborhood)
+```
+
+### Read and clean Zillow rental data
+
+```{r clean_zillow}
+zillow_df = read_csv("Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv") %>%
+  janitor::clean_names() %>%
+  select(region_name, county_name, starts_with("x")) %>%
+  rename(zip_code = region_name, county = county_name) %>%
+  pivot_longer(
+    cols = starts_with("x"),
+    names_to = "date",
+    values_to = "rent_price",
+    names_prefix = "x"
+  ) %>%
+  mutate(
+    date = str_replace_all(date, "_", "-"),
+    date = as.Date(date),
+    county = str_remove(county, " County")
+  ) %>%
+  filter(!is.na(rent_price))
+```
+
+### Merge datasets
+
+```{r merge_zillow}
+rental_df = zillow_df %>%
+  left_join(zip_codes_df, by = c("zip_code", "county")) %>%
+  arrange(zip_code, date)
+```
+
+### Dataset description
+
+The resulting dataset contains `r nrow(rental_df)` observations tracking rental prices across NYC ZIP codes from January 2015 to August 2024. The dataset includes `r length(unique(rental_df$zip_code))` unique ZIP codes and `r length(unique(rental_df$neighborhood))` unique neighborhoods across the five boroughs.
+
+### ZIP codes in ZIP code dataset but not in Zillow data
+
+```{r missing_zips}
+missing_zips = zip_codes_df %>%
+  anti_join(zillow_df, by = "zip_code") %>%
+  arrange(county, neighborhood)
+
+knitr::kable(head(missing_zips, 10))
+```
+
+There are `r nrow(missing_zips)` ZIP codes in the ZIP code reference dataset that do not appear in the Zillow rental price data. These ZIP codes may be excluded because:
+
+1. **Commercial/Industrial areas**: Some ZIP codes like those in Lower Manhattan or industrial areas may have minimal residential rental properties (e.g., Financial District areas with primarily offices).
+
+2. **Low rental activity**: Areas with predominantly owner-occupied housing or limited rental market activity may not have sufficient data for Zillow's rental index calculations.
+
+3. **New developments**: Newer neighborhoods or recently established ZIP codes may lack historical rental data.
+
+### COVID-19 rental price analysis
+
+```{r covid_analysis}
+# Get January 2020 prices
+rent_2020 = rental_df %>%
+  filter(date == as.Date("2020-01-01")) %>%
+  select(zip_code, county, neighborhood, rent_jan_2020 = rent_price)
+
+# Get January 2021 prices
+rent_2021 = rental_df %>%
+  filter(date == as.Date("2021-01-01")) %>%
+  select(zip_code, rent_jan_2021 = rent_price)
+
+# Compare and calculate changes
+covid_comparison = rent_2020 %>%
+  inner_join(rent_2021, by = "zip_code") %>%
+  mutate(
+    price_change = rent_jan_2021 - rent_jan_2020,
+    pct_change = (price_change / rent_jan_2020) * 100
+  ) %>%
+  arrange(price_change) %>%
+  head(10) %>%
+  select(zip_code, county, neighborhood, rent_jan_2020, rent_jan_2021, price_change, pct_change)
+
+knitr::kable(
+  covid_comparison,
+  digits = 2,
+  col.names = c("ZIP Code", "Borough", "Neighborhood", "Jan 2020 Rent", "Jan 2021 Rent", "Price Change ($)", "% Change"),
+  caption = "Top 10 ZIP Codes with Largest Rental Price Drops (Jan 2020 to Jan 2021)"
+)
+```
+
+### Commentary on COVID-19 price changes
+
+The analysis reveals significant rental price drops in several NYC neighborhoods during the COVID-19 pandemic. The most affected areas were predominantly in Manhattan, particularly affluent neighborhoods like the Upper West Side, Upper East Side, and areas near Central Park. These neighborhoods typically attract young professionals and experienced the largest exodus during the pandemic as remote work enabled residents to relocate to less expensive areas or leave the city entirely. The price drops ranged from approximately $400-700 per month, representing decreases of 10-20% in some of the city's most expensive rental markets. This reflects the pandemic's dramatic impact on urban housing demand, particularly in high-density, high-cost areas.
+
+```{r}
+sessionInfo()
+```
